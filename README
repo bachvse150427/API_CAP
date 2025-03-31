@@ -1,0 +1,62 @@
+conda create  -p venv python==3.12
+
+conda activate D:\CAP_FINAL\API-V1\venv
+
+python setup.py install
+
+python API.py
+
+python main.py
+
+ECR:
+
+AWS_ACCESS_KEY_ID = 
+AWS_SECRET_ACCESS_KEY = 
+AWS_REGION = us-east-1
+
+AWS_ECR_LOGIN_URI = 352397662919.dkr.ecr.us-east-1.amazonaws.com
+
+ECR_REPOSITORY_NAME = stock-bb-prediction
+
+
+
+//352397662919.dkr.ecr.us-east-1.amazonaws.com/stock-bb-prediction
+
+
+Docker Setup In EC2 Commands To be Executed
+#optinal
+sudo apt-get update -y
+
+sudo apt-get upgrade -y
+
+#required
+
+curl -fsSL https://get.docker.com -o get-docker.sh
+
+sudo sh get-docker.sh
+
+sudo usermod -aG docker ubuntu
+
+newgrp docker
+
+
+At Git Actions Runner Setup: linux-x64 : https://github.com/bachvse150427/API_BB_PREDICTIONS/settings/actions/runners/new?arch=x64&os=linux
+
+Download:
+
+mkdir actions-runner && cd actions-runner
+
+curl -o actions-runner-linux-x64-2.323.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.323.0/actions-runner-linux-x64-2.323.0.tar.gz
+
+echo "0dbc9bf5a58620fc52cb6cc0448abcca964a8d74b5f39773b7afcad9ab691e19  actions-runner-linux-x64-2.323.0.tar.gz" | shasum -a 256 -c
+
+tar xzf ./actions-runner-linux-x64-2.323.0.tar.gz
+
+Configure:
+
+./config.sh --url https://github.com/bachvse150427/API_BB_PREDICTIONS --token A5FCT2D47DS7DT33G6MHOOTH5K5D2
+
+self-hosted     //  Continuous-Deployment: //needs: build-and-push-ecr-image //runs-on: self-hosted
+
+./run.sh
+
