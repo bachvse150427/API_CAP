@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Prediction Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <style>
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .stats-card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .stats-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .error-message {
+            color: red;
+            margin: 10px 0;
+            display: none;
+        }
+        .file-info {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h2 class="mb-4">Stock Prediction Dashboard</h2>
+        
+        <!-- Error message -->
+        <div id="errorMessage" class="alert alert-danger error-message"></div>
+
+        <!-- Filters -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="dataTypeSelect" class="form-label">Market State</label>
+                        <select class="form-select" id="dataTypeSelect" onchange="loadFilters()">
+                            <option value="BB" selected>BB</option>
+                            <option value="UD">UD</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="tickerSelect" class="form-label">Ticker</label>
+                        <select class="form-select" id="tickerSelect">
+                            <option value="">Select...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="modelSelect" class="form-label">Model</label>
+                        <select class="form-select" id="modelSelect">
+                            <option value="">Select...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="monthYearSelect" class="form-label">Month-Year</label>
+                        <select class="form-select" id="monthYearSelect">
+                            <option value="">Select...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <button class="btn btn-primary" onclick="fetchPrediction()">Get Prediction</button>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <div id="fileInfo" class="file-info"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="row mb-4" id="statsSection" style="display: none;">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h5>Total Predictions</h5>
+                    <div class="stats-value" id="totalPredictions">0</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h5>Correct Predictions</h5>
+                    <div class="stats-value" id="correctPredictions">0</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h5>Accuracy</h5>
+                    <div class="stats-value" id="accuracy">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loading" class="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Results Table -->
+        <div class="card">
+            <div class="card-body">
+                <table id="resultTable" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Model</th>
+                            <th>Month-Year</th>
+                            <th>Index</th>
+                            <th>Actual</th>
+                            <th>Prediction</th>
+                            <th>Prob Class 0</th>
+                            <th>Prob Class 1</th>
+                            <th>Correct</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        let dataTable;
+
+        $(document).ready(function() {
+            dataTable = $('#resultTable').DataTable({
+                pageLength: 25,
+                order: [[3, 'asc']], // Sort by Index column by default
+                responsive: true
+            });
+            loadFilters();
+        });
+
+        async function loadFilters() {
+            try {
+                const dataType = document.getElementById('dataTypeSelect').value;
+                document.getElementById('loading').style.display = 'block';
+                
+                const response = await fetch(`/available-filters?data_type=${dataType}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                // Hiển thị thông tin file CSV
+                if (data.file_used) {
+                    document.getElementById('fileInfo').textContent = `Dữ liệu đang sử dụng: ${data.file_used}`;
+                }
+                
+                populateSelect('tickerSelect', data.tickers);
+                populateSelect('modelSelect', data.models);
+                populateSelect('monthYearSelect', data.month_years);
+            } catch (error) {
+                console.error('Error loading filters:', error);
+                showError('Error loading filters. Please try again.');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function populateSelect(elementId, options) {
+            const select = document.getElementById(elementId);
+            select.innerHTML = '<option value="">Select...</option>';
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                select.appendChild(optionElement);
+            });
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        async function fetchPrediction() {
+            const dataType = document.getElementById('dataTypeSelect').value;
+            const ticker = document.getElementById('tickerSelect').value;
+            const model = document.getElementById('modelSelect').value;
+            const monthYear = document.getElementById('monthYearSelect').value;
+
+            if (!ticker || !model || !monthYear) {
+                showError('Please select all filters');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('statsSection').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'none';
+
+            try {
+                const response = await fetch(
+                    `/stock-prediction?ticker=${ticker}&model=${model}&month_year=${monthYear}&data_type=${dataType}`
+                );
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log("Received data:", data);
+
+                if (data.status === 'success') {
+                    // Update file info if available
+                    if (data.file_used) {
+                        document.getElementById('fileInfo').textContent = `Dữ liệu đang sử dụng: ${data.file_used}`;
+                    }
+                    
+                    // Use statistics from API response
+                    const totalPredictions = data.statistics.total_predictions;
+                    const correctPredictions = data.statistics.correct_predictions;
+                    const accuracy = data.statistics.accuracy;
+
+                    // Update statistics
+                    document.getElementById('totalPredictions').textContent = totalPredictions;
+                    document.getElementById('correctPredictions').textContent = correctPredictions;
+                    document.getElementById('accuracy').textContent = accuracy.toFixed(2) + '%';
+                    document.getElementById('statsSection').style.display = 'flex';
+
+                    // Update table
+                    dataTable.clear();
+                    data.data.forEach(row => {
+                        dataTable.row.add([
+                            row.Ticker,
+                            row.Model,
+                            row['Month-Year'],
+                            row.Index,
+                            row.Actual,
+                            row.Prediction,
+                            row.Prob_Class_0.toFixed(4),
+                            row.Prob_Class_1.toFixed(4),
+                            row.Correct
+                        ]);
+                    });
+                    dataTable.draw();
+                } else {
+                    throw new Error(data.message || 'Failed to fetch data');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError(`Error fetching prediction data: ${error.message}`);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html> 

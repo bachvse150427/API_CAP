@@ -9,6 +9,5 @@ build
 logs
 README
 dependency_links.txt
-requires.txt
 SOURCES.txt
 top_level.txt
