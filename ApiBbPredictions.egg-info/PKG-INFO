@@ -1,0 +1,21 @@
+Metadata-Version: 2.2
+Name: ApiBbPredictions
+Version: 0.0.1
+Author: Bac Hoang
+Author-email: hoangbac.hnb@outlook.com
+Requires-Dist: python-dotenv
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: pymongo
+Requires-Dist: certifi
+Requires-Dist: pymongo[srv]==3.11
+Requires-Dist: fastapi>=0.68.0
+Requires-Dist: uvicorn>=0.15.0
+Requires-Dist: jinja2>=3.0.0
+Requires-Dist: schedule>=1.1.0
+Requires-Dist: requests>=2.26.0
+Requires-Dist: pydantic>=1.8.0
+Requires-Dist: python-multipart>=0.0.5
+Dynamic: author
+Dynamic: author-email
+Dynamic: requires-dist

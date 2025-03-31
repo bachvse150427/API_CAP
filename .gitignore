@@ -1,0 +1,14 @@
+venv
+.venv
+install_cmd.text
+
+Local_Data
+Get_Data
+dist
+build
+logs
+README
+dependency_links.txt
+requires.txt
+SOURCES.txt
+top_level.txt

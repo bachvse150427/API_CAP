@@ -1,0 +1,7 @@
+README
+setup.py
+ApiBbPredictions.egg-info/PKG-INFO
+ApiBbPredictions.egg-info/SOURCES.txt
+ApiBbPredictions.egg-info/dependency_links.txt
+ApiBbPredictions.egg-info/requires.txt
+ApiBbPredictions.egg-info/top_level.txt

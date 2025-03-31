@@ -1,6 +1,6 @@
 conda create  -p venv python==3.12
 
-conda activate D:\CAP_FINAL\API-V1\venv
+conda activate D:\CAP_FINAL\API\venv
 
 python setup.py install
 
