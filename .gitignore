@@ -1,5 +1,5 @@
 venv
-.venv
+.env
 install_cmd.txt
 last_data_hash.txt
 
