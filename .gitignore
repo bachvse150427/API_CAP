@@ -1,4 +1,5 @@
 venv
+subdir/.env
 .env
 install_cmd.txt
 last_data_hash.txt
@@ -9,4 +10,4 @@ dist
 build
 logs
 README
-README.md
+README.md 
