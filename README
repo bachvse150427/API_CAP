@@ -21,6 +21,8 @@ ECR_REPOSITORY_NAME = stock-prediction
 
 
 //352397662919.dkr.ecr.us-east-1.amazonaws.com/stock-bb-prediction
+docker build -t stock-prediction .
+docker run stock-prediction
 
 
 Docker Setup In EC2 Commands To be Executed

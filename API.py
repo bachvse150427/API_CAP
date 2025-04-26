@@ -112,16 +112,122 @@ async def test_endpoint(data_type: str = Query("BB", description="Market State: 
         logger.error(traceback.format_exc())
         return {"status": "error", "message": str(e)}
 
-@app.get("/stock-prediction")
-def get_stock_prediction(
-    ticker: str = Query(..., description="Stock ticker symbol"),
-    model: str = Query(..., description="Model name"),
-    month_year: str = Query(..., description="Month-Year format (e.g., 2024-03)"),
-    data_type: str = Query("BB", description="Market State: BB or UD")
+@app.get("/stock-all-models")
+def get_stock_all_models(
+    ticker: str = Query(..., description="Stock ticker symbol (Required)"),
+    market_state: str = Query(..., description="Market State: BB or UD (Required)"),
+    month_year: str = Query(None, description="Month-Year format (e.g., 2024-03). Optional - if not provided, returns all dates")
 ):
     try:
-        latest_file = get_latest_csv(data_type)
-        logger.info(f"Reading file for ticker {ticker}, model {model}, month-year {month_year}, data_type {data_type}")
+        if market_state.upper() not in ["BB", "UD"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid market_state: {market_state}. Must be either 'BB' or 'UD'"
+            )
+        
+        if not ticker or ticker.isspace():
+            raise HTTPException(
+                status_code=400,
+                detail="Ticker cannot be empty"
+            )
+        
+        latest_file = get_latest_csv(market_state)
+        logger.info(f"Reading file for ticker {ticker}, month_year {month_year}, market_state {market_state}")
+        
+        df = pd.read_csv(latest_file)
+        logger.info(f"Data loaded. Columns: {df.columns.tolist()}")
+        
+        required_columns = ['Ticker', 'Model', 'Month-Year', 'Index', 'Actual', 
+                          'Prediction', 'Prob_Class_0', 'Prob_Class_1', 'Correct']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing columns in CSV: {missing_columns}")
+
+        if ticker not in df['Ticker'].unique():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Ticker '{ticker}' not found in {market_state} data"
+            )
+
+        if month_year:
+            filtered_df = df[
+                (df['Ticker'] == ticker) & 
+                (df['Month-Year'] == month_year)
+            ]
+        else:
+            filtered_df = df[df['Ticker'] == ticker]
+        
+        if filtered_df.empty:
+            error_msg = f"No data found for Ticker={ticker}"
+            if month_year:
+                error_msg += f", Month-Year={month_year}"
+            error_msg += f", Market-State={market_state}"
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        result_df = filtered_df[required_columns]
+        
+        models = sorted(filtered_df['Model'].unique().tolist())
+        
+        model_statistics = {}
+        for model in models:
+            model_df = filtered_df[filtered_df['Model'] == model]
+            total_pred = len(model_df)
+            correct_pred = model_df['Correct'].sum()
+            accuracy = (correct_pred / total_pred * 100) if total_pred > 0 else 0
+            
+            model_statistics[model] = {
+                "total_predictions": total_pred,
+                "correct_predictions": int(correct_pred),
+                "accuracy": float(accuracy),
+                "dates": sorted(model_df['Month-Year'].unique().tolist()),
+                "total_dates": len(model_df['Month-Year'].unique())
+            }
+        
+        total_predictions = len(result_df)
+        correct_predictions = result_df['Correct'].sum()
+        accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+        
+        return JSONResponse(
+            content={
+                "status": "success",
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "market_state": market_state.upper(),
+                "query_params": {
+                    "ticker": ticker,
+                    "month_year": month_year if month_year else "all",
+                },
+                "available_models": models,
+                "total_models": len(models),
+                "overall_statistics": {
+                    "total_predictions": total_predictions,
+                    "correct_predictions": int(correct_predictions),
+                    "accuracy": float(accuracy)
+                },
+                "model_statistics": model_statistics,
+                "data": result_df.to_dict('records')
+            }
+        )
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in get_stock_all_models for {market_state}: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/latest-date-all-ticker-data")
+def get_latest_date_all_ticker_data(
+    market_state: str = Query(..., description="Market State: BB or UD (Required)")
+):
+    try:
+        # Validate market_state
+        if market_state.upper() not in ["BB", "UD"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid market_state: {market_state}. Must be either 'BB' or 'UD'"
+            )
+        
+        latest_file = get_latest_csv(market_state)
+        logger.info(f"Reading file for market_state {market_state}")
         
         df = pd.read_csv(latest_file)
         logger.info(f"Data loaded. Columns: {df.columns.tolist()}")
@@ -132,44 +238,71 @@ def get_stock_prediction(
         if missing_columns:
             raise ValueError(f"Missing columns in CSV: {missing_columns}")
         
-        filtered_df = df[
-            (df['Ticker'] == ticker) & 
-            (df['Model'] == model) & 
-            (df['Month-Year'] == month_year)
-        ]
+        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
         
-        if filtered_df.empty:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"No data found for Ticker={ticker}, Model={model}, Month-Year={month_year}, Data-Type={data_type}"
-            )
+        sample_date = df['Month-Year'].iloc[0]
+        logger.info(f"Sample date format: {sample_date}")
         
-        result_df = filtered_df[required_columns]
+        df['Date_Obj'] = pd.to_datetime(df['Month-Year'], format='mixed', errors='coerce')
+
+        df['Year_Month'] = df['Date_Obj'].dt.strftime('%Y-%m')
+        df['Year_Month_Obj'] = pd.to_datetime(df['Year_Month'], format='%Y-%m')
+
+        latest_data = []
+        tickers = df['Ticker'].unique()
         
-        total_predictions = len(result_df)
-        correct_predictions = result_df['Correct'].sum()
-        accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-        
+        for ticker in tickers:
+            ticker_df = df[df['Ticker'] == ticker]
+            latest_date = ticker_df['Year_Month_Obj'].max()
+            
+            if pd.isna(latest_date):
+                logger.warning(f"No valid date found for ticker {ticker}")
+                continue
+                
+            latest_ticker_data = ticker_df[ticker_df['Year_Month_Obj'] == latest_date]
+            
+            if latest_ticker_data.empty:
+                logger.warning(f"No data found for ticker {ticker} at date {latest_date}")
+                continue
+                
+            latest_data.append({
+                'ticker': ticker,
+                'latest_date': latest_date.strftime('%Y-%m'),
+                'models': []
+            })
+            for model in latest_ticker_data['Model'].unique():
+                model_data = latest_ticker_data[latest_ticker_data['Model'] == model]
+                
+                if model_data.empty:
+                    continue
+                    
+                prediction = model_data['Prediction'].iloc[0]
+                Prob_Class_1 = model_data['Prob_Class_1'].iloc[0]
+                Prob_Class_0 = model_data['Prob_Class_0'].iloc[0]
+                index = model_data['Index'].iloc[0]
+                
+                latest_data[-1]['models'].append({
+                    'model_name': model,
+                    'index': int(index) if index is not None else None,
+                    'prediction': int(prediction) if prediction is not None else None,
+                    'Prob_Class_1': float(Prob_Class_1) if Prob_Class_1 is not None else None,
+                    'Prob_Class_0': float(Prob_Class_0) if Prob_Class_0 is not None else None,
+               
+
+                    })
         return JSONResponse(
             content={
                 "status": "success",
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "data_type": data_type,
-                "query_params": {
-                    "ticker": ticker,
-                    "model": model,
-                    "month_year": month_year
-                },
-                "statistics": {
-                    "total_predictions": total_predictions,
-                    "correct_predictions": int(correct_predictions),
-                    "accuracy": float(accuracy)
-                },
-                "data": result_df.to_dict('records')
+                "market_state": market_state.upper(),
+                "total_tickers": len(latest_data),
+                "data": latest_data
             }
         )
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        logger.error(f"Error in get_stock_prediction for {data_type}: {str(e)}")
+        logger.error(f"Error in get_latest_ticker_data for {market_state}: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -187,68 +320,6 @@ def get_available_filters(data_type: str = Query("BB", description="Market State
         }
     except Exception as e:
         logger.error(f"Error in get_available_filters for {data_type}: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/stock-all-predictions")
-def get_stock_all_predictions(
-    ticker: str = Query(..., description="Stock ticker symbol"),
-    model: str = Query(..., description="Model name"),
-    data_type: str = Query("BB", description="Market State: BB or UD")
-):
-    try:
-        latest_file = get_latest_csv(data_type)
-        logger.info(f"Reading file for ticker {ticker}, model {model}, data_type {data_type}")
-        
-        df = pd.read_csv(latest_file)
-        logger.info(f"Data loaded. Columns: {df.columns.tolist()}")
-        
-        required_columns = ['Ticker', 'Model', 'Month-Year', 'Index', 'Actual', 
-                          'Prediction', 'Prob_Class_0', 'Prob_Class_1', 'Correct']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise ValueError(f"Missing columns in CSV: {missing_columns}")
-        
-        # Lọc dữ liệu theo ticker và model
-        filtered_df = df[
-            (df['Ticker'] == ticker) & 
-            (df['Model'] == model)
-        ]
-        
-        if filtered_df.empty:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"No data found for Ticker={ticker}, Model={model}, Data-Type={data_type}"
-            )
-        
-        result_df = filtered_df[required_columns]
-        
-        # Tính toán thống kê tổng thể
-        total_predictions = len(result_df)
-        correct_predictions = result_df['Correct'].sum()
-        accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-        
-        return JSONResponse(
-            content={
-                "status": "success",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "data_type": data_type,
-                "query_params": {
-                    "ticker": ticker,
-                    "model": model
-                },
-                "statistics": {
-                    "total_predictions": total_predictions,
-                    "correct_predictions": int(correct_predictions),
-                    "accuracy": float(accuracy)
-                },
-                "dates": sorted(filtered_df['Month-Year'].unique().tolist()),
-                "total_dates": len(filtered_df['Month-Year'].unique()),
-                "data": result_df.to_dict('records')
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error in get_stock_all_predictions for {data_type}: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -286,7 +357,7 @@ def print_csv_files():
         logger.error(f"❌ Error reading UD file: {str(e)}")
     
     logger.info("="*50)
-
+    
 if __name__ == "__main__":
     import uvicorn
     

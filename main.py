@@ -115,18 +115,26 @@ def run_get_mongo_data():
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
         max_retries = 3
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
         for retry in range(max_retries):
             try:
                 process = subprocess.Popen(
                     [sys.executable, "get_mongo_data.py"], 
                     stdout=subprocess.PIPE, 
                     stderr=subprocess.PIPE,
-                    startupinfo=startupinfo
+                    startupinfo=startupinfo,
+                    env=env,
+                    universal_newlines=True
                 )
                 stdout, stderr = process.communicate(timeout=120)
-                logger.info(f"Output from get_mongo_data.py:\n{stdout.decode('utf-8', errors='replace')}")
-                if stderr:
-                    logger.error(f"Errors from get_mongo_data.py:\n{stderr.decode('utf-8', errors='replace')}")
+                if stdout:
+                    logger.info(f"Output from get_mongo_data.py:\n{stdout}")
+                if stderr and any(error_keyword in stderr for error_keyword in ["Error:", "Exception:", "Traceback"]):
+                    logger.error(f"Errors from get_mongo_data.py:\n{stderr}")
+                elif stderr and stderr.strip():
+                    logger.info(f"Additional output from get_mongo_data.py:\n{stderr}")
+                
                 if process.returncode == 0:
                     logger.info("Successfully fetched data from MongoDB!")
                     return True
@@ -171,8 +179,9 @@ def main():
             sys.exit(1)
     try:
         while True:
-            logger.info("Waiting 2 hour before checking for changes...")
-            time.sleep(7200)########################################################################################################
+            sleep_time = int(os.environ.get('CHECK_INTERVAL', 7200))
+            logger.info(f"Waiting {sleep_time} seconds before checking for changes...")
+            time.sleep(sleep_time)
             if api_process is not None and api_process.poll() is not None:
                 logger.warning("API server has stopped, restarting...")
                 startupinfo = None
